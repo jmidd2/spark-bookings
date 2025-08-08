@@ -22,11 +22,13 @@ type EventPageData struct {
 var (
 	//go:embed templates/*
 	templatesFS embed.FS
+
+	//go:embed assets/*
+	assetsFS embed.FS
 )
 
 func main() {
-	staticFS := http.FileServer(http.Dir("assets/"))
-	http.Handle("/static/", http.StripPrefix("/static/", staticFS))
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServerFS(assetsFS)))
 
 	test, err := template.ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
