@@ -9,18 +9,18 @@
     <link rel="stylesheet" href="/assets/stylesheets/main.css">
 </head>
 <body>
-<div class="container">
-<h1>Welcome to Phoenix Spark!</h1>
-    <h2>Upcoming Events</h2>
-<ul>
-    {{range .Events}}
-        {{if .Done}}
-            <li class="done">{{.Title}}</li>
-        {{else}}
-            <li>{{.Title}}</li>
-        {{end}}
-    {{end}}
-</ul>
-</div>
+    <div class="container">
+        <h1>Welcome to Phoenix Spark!</h1>
+        <h2>Upcoming Events</h2>
+        <ul>
+            {{range .Events}}
+                {{if .Done}}
+                    <li class="done">{{.Title}}</li>
+                {{else}}
+                    <li>{{.Title}}</li>
+                {{end}}
+            {{end}}
+        </ul>
+    </div>
 </body>
 </html>
