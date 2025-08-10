@@ -68,7 +68,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := EventPageData{PageTitle: "Todos", Events: []Event{
+	data := EventPageData{PageTitle: "Conference Room Events", Events: []Event{
 		{Title: "Some Meeting", Done: false},
 		{Title: "All the people", Done: true},
 	}}
