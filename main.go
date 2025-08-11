@@ -13,7 +13,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/microsoft/kiota-abstractions-go/serialization"
-	"github.com/microsoft/kiota-abstractions-go/store"
 	msgraphsdk "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
@@ -22,16 +21,63 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type Event struct {
-	Title string
-	Done  bool
-	Date  time.Time
-}
-
 type EventPageData struct {
 	PageTitle            string
-	ActiveBooking        BookingAppointment
+	ActiveBooking        interface{}
 	UpcomingAppointments []BookingAppointment
+	TotalBookings        int
+}
+
+type BookingBusiness struct {
+	ID          string
+	DisplayName string
+	Email       string
+	Phone       string
+	WebSiteUrl  string
+}
+
+type BookingDateTime struct {
+	DateTime time.Time
+	TimeZone string
+}
+
+type BookingCustomer struct {
+	EmailAddress string
+	Name         string
+	Phone        string
+	Notes        string
+	TimeZone     string
+}
+
+type BookingQuestion struct {
+	QuestionID   string
+	IsRequired   bool
+	QuestionText string
+	Answer       string
+}
+
+type BookingAppointment struct {
+	Id                    string
+	Customer              BookingCustomer
+	CustomerTimeZone      string
+	ServiceId             string
+	ServiceName           string
+	Duration              serialization.ISODuration
+	ServiceNotes          string
+	StaffMemberIds        []string
+	Start                 BookingDateTime
+	End                   BookingDateTime
+	CreatedDateTime       time.Time
+	LastUpdatedDateTime   time.Time
+	Questions             []BookingQuestion
+	MaximumAttendeesCount int32
+}
+
+type CalendarView struct {
+	BookingAppointments  []BookingAppointment
+	ActiveBooking        *BookingAppointment
+	UpcomingAppointments []BookingAppointment
+	BookingBusiness      BookingBusiness
 }
 
 type BookingConfig struct {
@@ -40,8 +86,7 @@ type BookingConfig struct {
 	TenantID     string
 	BusinessID   string
 	AuthURL      string
-	//RedirectURI  string
-	//Scopes       []string
+	Scopes       []string
 }
 
 type Config struct {
@@ -52,9 +97,11 @@ type Config struct {
 	Bookings BookingConfig
 }
 
+type AppClient msgraphsdk.GraphServiceClient
+
 type App struct {
 	Config Config
-	//MsftAcct msalPublic.Client
+	Client *AppClient
 }
 
 const (
@@ -91,8 +138,8 @@ func handleNotFound(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 }
 
-func getStringFromStore(store store.BackingStore, key string) *string {
-	val, ok := store.Get(key)
+func getStringFromStore(c models.BookingCustomerInformationBaseable, key string) *string {
+	val, ok := c.GetBackingStore().Get(key)
 	if ok != nil {
 		log.Fatal("Error getting value from store: ", ok)
 	}
@@ -100,8 +147,8 @@ func getStringFromStore(store store.BackingStore, key string) *string {
 	return val.(*string)
 }
 
-func getQuestionsFromStore(store store.BackingStore) []BookingQuestion {
-	questions, err := store.Get("customQuestionAnswers")
+func getQuestionsFromStore(c models.BookingCustomerInformationBaseable) []BookingQuestion {
+	questions, err := c.GetBackingStore().Get("customQuestionAnswers")
 	if questions == nil || err != nil {
 		return nil
 	}
@@ -120,102 +167,138 @@ func getQuestionsFromStore(store store.BackingStore) []BookingQuestion {
 	return q
 }
 
+func newBookingCalendarViewRequest(start string, end string) *solutions.BookingBusinessesItemCalendarViewRequestBuilderGetRequestConfiguration {
+	qp := &solutions.BookingBusinessesItemCalendarViewRequestBuilderGetQueryParameters{
+		Start:  &start,
+		End:    &end,
+		Select: []string{"id", "customers", "customerName", "customerEmailAddress", "customerPhone", "customerNotes", "customerTimeZone", "serviceId", "serviceName", "duration", "serviceNotes", "staffMemberIds", "startDateTime", "endDateTime", "createdDateTime", "lastUpdatedDateTime", "maximumAttendeesCount"},
+	}
+
+	return &solutions.BookingBusinessesItemCalendarViewRequestBuilderGetRequestConfiguration{
+		QueryParameters: qp,
+	}
+}
+
+func (c *AppClient) getBookingCalendarView(ctx context.Context, businessID string, start string, end string) (CalendarView, error) {
+	configuration := newBookingCalendarViewRequest(start, end)
+
+	response, err := c.Solutions().BookingBusinesses().ByBookingBusinessId(businessID).CalendarView().Get(ctx, configuration)
+	if err != nil {
+		fmt.Println("Error getting user: ", err)
+		printOdataError(err)
+		return CalendarView{}, err
+	}
+
+	appointments := make([]BookingAppointment, 0)
+
+	for _, a := range response.GetValue() {
+
+		customers := a.GetCustomers()
+
+		var questions []BookingQuestion
+
+		if customers != nil || len(customers) > 0 {
+			questions = getQuestionsFromStore(customers[0])
+		}
+
+		startTime, err := getDateTime(a.GetStartDateTime())
+		if err != nil {
+			return CalendarView{}, err
+		}
+
+		endTime, err := getDateTime(a.GetEndDateTime())
+		if err != nil {
+			return CalendarView{}, err
+		}
+
+		customer := getCustomerValue(a)
+
+		appointment := BookingAppointment{
+			Id:             *a.GetId(),
+			Customer:       customer,
+			ServiceId:      getStringValue(a.GetServiceId()),
+			ServiceName:    getStringValue(a.GetServiceName()),
+			Duration:       getDurationValue(a.GetDuration()),
+			ServiceNotes:   getStringValue(a.GetServiceNotes()),
+			StaffMemberIds: a.GetStaffMemberIds(),
+			Start: BookingDateTime{
+				DateTime: startTime,
+				TimeZone: getStringValue(a.GetStartDateTime().GetTimeZone()),
+			},
+			End: BookingDateTime{
+				DateTime: endTime,
+				TimeZone: getStringValue(a.GetStartDateTime().GetTimeZone()),
+			},
+			CreatedDateTime:       getTimeValue(a.GetCreatedDateTime()),
+			LastUpdatedDateTime:   getTimeValue(a.GetLastUpdatedDateTime()),
+			MaximumAttendeesCount: getIntValue(a.GetMaximumAttendeesCount()),
+			Questions:             questions,
+		}
+
+		appointments = append(appointments, appointment)
+	}
+
+	activeBooking, upcomingAppointments := findActiveBooking(appointments)
+
+	return CalendarView{BookingAppointments: appointments, ActiveBooking: activeBooking, UpcomingAppointments: upcomingAppointments}, nil
+}
+
+func getDateTime(dt models.DateTimeTimeZoneable) (time.Time, error) {
+	dateTime := dt.GetDateTime()
+	if dateTime == nil {
+		return time.Time{}, fmt.Errorf("DateTime is required")
+	}
+	return time.Parse(time.RFC3339Nano, *dateTime)
+}
+
+func getCustomerValue(a models.BookingAppointmentable) BookingCustomer {
+	return BookingCustomer{
+		Name:         getStringValue(a.GetCustomerName()),
+		EmailAddress: getStringValue(a.GetCustomerEmailAddress()),
+		Phone:        getStringValue(a.GetCustomerPhone()),
+		Notes:        getStringValue(a.GetCustomerNotes()),
+		TimeZone:     getStringValue(a.GetCustomerTimeZone()),
+	}
+}
+
+func findActiveBooking(appointments []BookingAppointment) (*BookingAppointment, []BookingAppointment) {
+	currentTime := time.Now()
+
+	// for testing, so we can see the booking in the future
+	if app.Config.Env == "development" {
+		currentTime = time.Date(2025, 8, 13, 19, 0, 0, 0, time.UTC)
+	}
+
+	for i, a := range appointments {
+		if currentTime.Before(a.End.DateTime) && currentTime.After(a.Start.DateTime) {
+			return &a, append(appointments[:i], appointments[i+1:]...)
+		}
+	}
+	return nil, appointments
+}
+
 func handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" && r.URL.Path != "/index.html" {
 		handleNotFound(w, r)
 		return
 	}
 
-	cred, err := azidentity.NewClientSecretCredential(app.Config.Bookings.TenantID, app.Config.Bookings.ClientID, app.Config.Bookings.ClientSecret, nil)
+	nowUtc := time.Now().UTC()
+	requestStartTime := nowUtc.Format("2006-01-02T15:04:05Z")
+	requestEndTime := nowUtc.Add(time.Hour * 24 * 30).Format("2006-01-02T15:04:05Z")
+
+	calendarView, err := app.Client.getBookingCalendarView(context.Background(), app.Config.Bookings.BusinessID, requestStartTime, requestEndTime)
 	if err != nil {
-		log.Fatal("Error creating client credentials: ", err)
-	}
-	graphClient, err := msgraphsdk.NewGraphServiceClientWithCredentials(cred, []string{"https://graph.microsoft.com/.default"})
-	if err != nil {
-		log.Fatal("Error creating graph client: ", err)
+		handleError(w, err)
+		return
 	}
 
-	var top int32 = 10
-
-	requestOptions := solutions.BookingBusinessesItemAppointmentsRequestBuilderGetRequestConfiguration{
-		QueryParameters: &solutions.BookingBusinessesItemAppointmentsRequestBuilderGetQueryParameters{
-			Top: &top,
-		},
+	data := EventPageData{
+		PageTitle:            "Conference Room Events",
+		UpcomingAppointments: calendarView.UpcomingAppointments,
+		ActiveBooking:        calendarView.ActiveBooking,
+		TotalBookings:        len(calendarView.BookingAppointments),
 	}
-
-	result, err := graphClient.Solutions().BookingBusinesses().ByBookingBusinessId(app.Config.Bookings.BusinessID).Appointments().Get(context.Background(), &requestOptions)
-	if err != nil {
-		fmt.Println("Error getting user: ", err)
-		printOdataError(err)
-	}
-
-	appointments := make([]BookingAppointment, 0)
-
-	for _, appointment := range result.GetValue() {
-		startTime, err := time.Parse(time.RFC3339Nano, *appointment.GetStartDateTime().GetDateTime())
-		if err != nil {
-			log.Fatal("Error parsing start time: ", err)
-		}
-
-		endTime, err := time.Parse(time.RFC3339Nano, *appointment.GetEndDateTime().GetDateTime())
-
-		//duration := *appointment.GetDuration()
-
-		customers := appointment.GetCustomers()
-
-		if customers == nil || len(customers) == 0 {
-			continue
-		}
-
-		questions := getQuestionsFromStore(customers[0].GetBackingStore())
-
-		appointments = append(appointments, BookingAppointment{
-			Id:                       *appointment.GetId(),
-			SelfServiceAppointmentId: getStringValue(appointment.GetSelfServiceAppointmentId()),
-			IsLocationOnline:         *appointment.GetIsLocationOnline(),
-			CustomerName:             getStringValue(appointment.GetCustomerName()),
-			CustomerEmailAddress:     getStringValue(appointment.GetCustomerEmailAddress()),
-			CustomerPhone:            getStringValue(appointment.GetCustomerPhone()),
-			CustomerNotes:            getStringValue(appointment.GetCustomerNotes()),
-			JoinWebUrl:               getStringValue(appointment.GetJoinWebUrl()),
-			Customer: BookingCustomer{
-				ID:           *getStringFromStore(customers[0].GetBackingStore(), "customerId"),
-				EmailAddress: *getStringFromStore(customers[0].GetBackingStore(), "emailAddress"),
-				Name:         *getStringFromStore(customers[0].GetBackingStore(), "name"),
-				Phone:        *getStringFromStore(customers[0].GetBackingStore(), "phone"),
-				Notes:        *getStringFromStore(customers[0].GetBackingStore(), "notes"),
-			},
-			CustomerTimeZone:        *appointment.GetCustomerTimeZone(),
-			SmsNotificationsEnabled: *appointment.GetSmsNotificationsEnabled(),
-			ServiceId:               getStringValue(appointment.GetServiceId()),
-			ServiceName:             getStringValue(appointment.GetServiceName()),
-			Duration:                *appointment.GetDuration(),
-			PreBuffer:               *appointment.GetPreBuffer(),
-			PostBuffer:              *appointment.GetPostBuffer(),
-			PriceType:               *appointment.GetPriceType(),
-			Price:                   *appointment.GetPrice(),
-			ServiceNotes:            *appointment.GetServiceNotes(),
-			OptOutOfCustomerEmail:   *appointment.GetOptOutOfCustomerEmail(),
-			AnonymousJoinWebUrl:     *appointment.GetAnonymousJoinWebUrl(),
-			StaffMemberIds:          appointment.GetStaffMemberIds(),
-			Start: BookingDateTime{
-				DateTime: startTime,
-				TimeZone: *appointment.GetStartDateTime().GetTimeZone(),
-			},
-			End: BookingDateTime{
-				DateTime: endTime,
-				TimeZone: *appointment.GetStartDateTime().GetTimeZone(),
-			},
-			ServiceLocation:       appointment.GetServiceLocation(),
-			Reminders:             appointment.GetReminders(),
-			CreatedDateTime:       *appointment.GetCreatedDateTime(),
-			LastUpdatedDateTime:   *appointment.GetLastUpdatedDateTime(),
-			MaximumAttendeesCount: *appointment.GetMaximumAttendeesCount(),
-			Questions:             questions,
-		})
-	}
-
-	data := EventPageData{PageTitle: "Conference Room Events", UpcomingAppointments: appointments[1:6], ActiveBooking: appointments[0]}
 
 	tmpl, err := template.ParseFS(templatesFS, "templates/index.html")
 	if err != nil {
@@ -298,6 +381,7 @@ func newConfig() (*Config, error) {
 	authUrl := GetEnvStringRequired("BOOKINGS_AUTH_URL")
 
 	config.Bookings.AuthURL = authUrl + "/" + config.Bookings.TenantID
+	config.Bookings.Scopes = []string{"https://graph.microsoft.com/.default"}
 
 	return &config, nil
 }
@@ -346,72 +430,46 @@ func GetEnvBoolRequired(key string) bool {
 	return value
 }
 
-type BookingBusiness struct {
-	ID          string
-	DisplayName string
-	Email       string
-	Phone       string
-	WebSiteUrl  string
-}
-
-type BookingDateTime struct {
-	DateTime time.Time
-	TimeZone string
-}
-
-type BookingCustomer struct {
-	ID           string
-	EmailAddress string
-	Name         string
-	Phone        string
-	Notes        string
-}
-
-type BookingQuestion struct {
-	QuestionID   string
-	IsRequired   bool
-	QuestionText string
-	Answer       string
-}
-
-type BookingAppointment struct {
-	Id                       string
-	SelfServiceAppointmentId string
-	IsLocationOnline         bool
-	CustomerName             string
-	CustomerEmailAddress     string
-	CustomerPhone            string
-	CustomerNotes            string
-	JoinWebUrl               string
-	Customer                 BookingCustomer
-	CustomerTimeZone         string
-	SmsNotificationsEnabled  bool
-	ServiceId                string
-	ServiceName              string
-	Duration                 serialization.ISODuration
-	PreBuffer                serialization.ISODuration
-	PostBuffer               serialization.ISODuration
-	PriceType                models.BookingPriceType
-	Price                    float64
-	ServiceNotes             string
-	OptOutOfCustomerEmail    bool
-	AnonymousJoinWebUrl      string
-	StaffMemberIds           []string
-	Start                    BookingDateTime
-	End                      BookingDateTime
-	ServiceLocation          models.Locationable
-	Reminders                []models.BookingReminderable
-	CreatedDateTime          time.Time
-	LastUpdatedDateTime      time.Time
-	MaximumAttendeesCount    int32
-	Questions                []BookingQuestion
-}
-
 func getStringValue(s *string) string {
 	if s == nil {
 		return ""
 	}
 	return *s
+}
+
+func getTimeValue(t *time.Time) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+	return *t
+}
+
+func getIntValue(i *int32) int32 {
+	if i == nil {
+		return 0
+	}
+	return *i
+}
+
+func getDurationValue(d *serialization.ISODuration) serialization.ISODuration {
+	if d == nil {
+		return serialization.ISODuration{}
+	}
+	return *d
+}
+
+func newGraphClient() *AppClient {
+	cred, err := azidentity.NewClientSecretCredential(app.Config.Bookings.TenantID, app.Config.Bookings.ClientID, app.Config.Bookings.ClientSecret, nil)
+	if err != nil {
+		log.Fatal("Error creating client credentials: ", err)
+	}
+
+	graphClient, err := msgraphsdk.NewGraphServiceClientWithCredentials(cred, app.Config.Bookings.Scopes)
+	if err != nil {
+		log.Fatal("Error creating graph client: ", err)
+	}
+
+	return (*AppClient)(graphClient)
 }
 
 var app App
@@ -434,40 +492,7 @@ func main() {
 
 	fmt.Printf("Config: %+v\n", app.Config)
 
-	//publicClient, err := msalPublic.New(app.Config.Bookings.ClientID, msalPublic.WithAuthority(app.Config.Bookings.AuthURL))
-	//if err != nil {
-	//	fmt.Println("Error creating public client")
-	//	panic(err)
-	//}
-	//app.MsftAcct = publicClient
-	//
-	//fmt.Printf("Public client: %v\n", publicClient)
-	//
-	//cred, err := confidential.NewCredFromSecret(app.Config.Bookings.ClientSecret)
-	//if err != nil {
-	//	log.Fatal("Error creating client credentials: ", err)
-	//}
-	//
-	//client, err := confidential.New(app.Config.Bookings.AuthURL, app.Config.Bookings.ClientID, cred)
-	//if err != nil {
-	//	log.Fatal("Error creating confidential client: ", err)
-	//}
-	//
-	//fmt.Printf("Confidential client: %+v\n", client)
-	//
-	//scopes := []string{"https://graph.microsoft.com/.default"}
-	//ctx := context.Background()
-	//result, err := client.AcquireTokenSilent(ctx, scopes)
-	//if err != nil {
-	//	// Cache miss
-	//	result, err = client.AcquireTokenByCredential(ctx, scopes)
-	//	if err != nil {
-	//		log.Fatal("Error acquiring token: ", err)
-	//	}
-	//}
-
-	//fmt.Printf("Result: %+v\n", result)
-	//fmt.Printf("Result.AccessToken: %+v\n", result.AccessToken)
+	app.Client = newGraphClient()
 
 	http.Handle("/assets/", logMiddleware(http.FileServerFS(assetsFS)))
 
