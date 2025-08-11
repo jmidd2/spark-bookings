@@ -25,8 +25,9 @@ Perfect for mounting on a tablet or screen outside your conference room.
 - Access to Microsoft Bookings API (configuration required)
 - Web browser for display
 
-## Installation
+## Development
 
+### Local Development
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/jmidd2/spark-bookings.git
@@ -38,22 +39,44 @@ Perfect for mounting on a tablet or screen outside your conference room.
    go mod tidy
    ```
 
-3. **Set up environment variables:**
+3. **Set up [environment variables](#configuration):**
    ```bash
    cp .env.example .env
    # Edit .env with your configuration
    ```
 
-## Configuration
+4. **Start dev server**
+    ```bash
+    just dev
+    # Server will start on http://localhost:8090
+    ```
+   
+### Configuration
 
 The application uses environment variables for configuration:
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `APP_ENV` | Application environment | `development` | No |
-| `PORT` | Server port | `8080` (dev), `80` (prod) | No |
-| `DOMAIN` | Server domain | `localhost` (dev) | Yes (prod) |
-| `HTTP_SECURE` | Enable HTTPS | `false` | No |
+| Variable                 | Description                                            | Default                             | Required   |
+|--------------------------|--------------------------------------------------------|-------------------------------------|------------|
+| `APP_ENV`                | Application environment                                | `development`                       | No         |
+| `PORT`                   | Server port                                            | `8080` (dev), `80` (prod)           | No         |
+| `DOMAIN`                 | Server domain                                          | `localhost` (dev)                   | Yes (prod) |
+| `HTTP_SECURE`            | Enable HTTPS                                           | `false`                             | No         |
+| `BOOKINGS_CLIENT_ID`     | Microsoft Bookings Client ID                           | -                                   | Yes        |
+| `BOOKINGS_CLIENT_SECRET` | Microsoft Bookings Client Secret                       | -                                   | Yes        |
+| `BOOKINGS_TENANT_ID`     | Microsoft Bookings Tenant ID                           | -                                   | Yes        |
+| `BOOKINGS_BUSINESS_ID`   | Microsoft Bookings Business ID                         | -                                   | Yes        |
+| `BOOKINGS_AUTH_URL`      | Microsoft Bookings Authority URL without the Tenant ID | `https://login.microsoftonline.com` | No         |
+
+### Configuring Bookings API
+
+The application must first be registered with Microsoft Graph API in [Microsoft Identity Platform](https://learn.microsoft.com/en-us/graph/auth-register-app-v2). After registration, you will be provided with a client ID and client secret.
+
+The application must be granted the following permissions:
+- `Bookings.Read.All`
+- `Bookings.ReadWrite.All`
+- `User.Read`
+
+The application uses the [Microsoft Bookings API](https://learn.microsoft.com/en-us/graph/api/resources/booking-api-overview?view=graph-rest-1.0) to fetch room booking information. To use the API, you must first register an application with Microsoft.
 
 ### Example .env file:
 ```
@@ -62,12 +85,19 @@ APP_ENV=development
 PORT=8080
 DOMAIN=localhost
 HTTP_SECURE=false
+BOOKINGS_CLIENT_ID=clientId
+BOOKINGS_CLIENT_SECRET=clientSecret
+BOOKINGS_TENANT_ID=tenantId
+BOOKINGS_BUSINESS_ID=businessId
+BOOKINGS_AUTH_URL=authorityUrl
 ```
+
 ## Usage
 
 1. **Start the server:**
    ```bash
-   go run main.go
+   just build
+   ./bin/booking-display
    ```
 
 2. **Access the application:**
@@ -79,50 +109,6 @@ HTTP_SECURE=false
     - For kiosk mode, use browser full-screen mode
     - Consider using a dedicated kiosk browser for public displays
 
-## Project Structure
-```
-spark-bookings/
-├── main.go              # Main application server
-├── templates/           # HTML templates
-│   └── index.html      # Main display template
-├── assets/             # Static assets (CSS, JS, images)
-│   └── stylesheets/    # CSS
-├── go.mod              # Go module file
-├── .env.example        # Environment variables template
-└── README.md           # This file
-```
-## Microsoft Bookings Integration
-
-This application is designed to integrate with Microsoft Bookings API to fetch:
-- Room booking information
-- Meeting titles and organizers
-- Start and end times
-- Attendee information for welcome messages
-
-*Note: Microsoft Bookings API integration setup instructions will be added as the integration is implemented.*
-
-## Development
-
-### Local Development
-```
-bash
-# Set development environment
-export APP_ENV=development
-
-# Run the server
-go run main.go
-
-# Server will start on http://localhost:8080
-```
-### Building for Production
-```
-bash
-# Build binary
-go build -o booking-display main.go
-
-# Run binary
-./booking-display
-```
 ## Deployment
 
 The application is designed to be easily deployable:
@@ -136,6 +122,20 @@ The application is designed to be easily deployable:
 - Configure `DOMAIN` to your server's domain
 - Set `HTTP_SECURE=true` if using HTTPS
 - Configure appropriate `PORT` if not using standard ports
+
+
+## Project Structure
+```
+spark-bookings/
+├── main.go              # Main application server
+├── templates/           # HTML templates
+│   └── index.html      # Main display template
+├── assets/             # Static assets (CSS, JS, images)
+│   └── stylesheets/    # CSS
+├── go.mod              # Go module file
+├── .env.example        # Environment variables template
+└── README.md           # This file
+```
 
 ## Contributing
 

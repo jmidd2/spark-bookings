@@ -89,7 +89,7 @@ func New() (*Config, error) {
 	//config.Bookings.BusinessID = os.Getenv("BOOKINGS_BUSINESS_ID")
 	config.Bookings.BusinessID = GetEnvStringRequired("BOOKINGS_BUSINESS_ID")
 	//authUrl := os.Getenv("BOOKINGS_AUTH_URL")
-	authUrl := GetEnvStringRequired("BOOKINGS_AUTH_URL")
+	authUrl := GetEnvStringOrDefault("BOOKINGS_AUTH_URL", "https://login.microsoftonline.com")
 
 	config.Bookings.AuthURL = authUrl + "/" + config.Bookings.TenantID
 	config.Bookings.Scopes = []string{"https://graph.microsoft.com/.default"}

@@ -10,6 +10,14 @@ func GetEnvString(key string) string {
 	return os.Getenv(key)
 }
 
+func GetEnvStringOrDefault(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value
+}
+
 func GetEnvInt(key string) int {
 	value, err := strconv.Atoi(os.Getenv(key))
 	if err != nil {
