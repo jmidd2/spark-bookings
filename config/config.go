@@ -6,7 +6,6 @@ import (
 	"os"
 	"spark-bookings/client"
 	"spark-bookings/utils"
-	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -19,76 +18,62 @@ type Config struct {
 	Bookings client.Config
 }
 
+const DefaultEnv = "development"
+
 func New() (*Config, error) {
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
 
-	env := os.Getenv("APP_ENV")
-	if env == "" {
-		env = "development"
-	}
+	env := GetEnvStringOrDefault("APP_ENV", DefaultEnv)
 	utils.PrintInfo(fmt.Sprintf("Running in %s mode", utils.Bold(env)))
-	//fmt.Printf("%sRunning in %s mode%s\n", utils.ColorBlue, utils.Bold(env), utils.ColorReset)
+
+	secure := GetEnvBool("HTTP_SECURE")
+	utils.PrintInfo(fmt.Sprintf("Secure: %t", secure))
 
 	config := Config{
-		Secure: os.Getenv("HTTP_SECURE") == "true",
+		Secure: secure,
 		Env:    env,
 	}
 
-	domain := os.Getenv("DOMAIN")
-	if domain != "" {
-		config.Domain = domain
-	} else {
-		if config.Env == "development" {
-			config.Domain = "localhost"
-		} else {
-			return &Config{}, fmt.Errorf("DOMAIN environment variable is required")
+	defaultDomain := "localhost"
+	if config.Env != "development" {
+		defaultDomain, err = os.Hostname()
+		if err != nil {
+			return &Config{}, err
 		}
 	}
+	domain := GetEnvStringOrDefault("DOMAIN", defaultDomain)
+	config.Domain = domain
 
-	var url string
 	var port int
-	if config.Secure {
-		url = "https://"
-		portStr := os.Getenv("PORT")
-		port = 443
-		if portStr != "" {
-			var err error
-			port, err = strconv.Atoi(portStr)
-			if err != nil {
-				return &Config{}, err
-			}
-		}
-	} else {
-		url = "http://"
-		portStr := os.Getenv("PORT")
-		if config.Env == "development" {
-			port = 8080
+	portStr := GetEnvInt("PORT")
+	if portStr == 0 {
+		if config.Secure {
+			port = 443
 		} else {
-			port = 80
-		}
-		if portStr != "" {
-			var err error
-			port, err = strconv.Atoi(portStr)
-			if err != nil {
-				return &Config{}, err
+			if config.Env == "development" {
+				port = 8080
+			} else {
+				port = 80
 			}
 		}
 	}
 	config.Port = port
+
+	var url string
+	if config.Secure {
+		url = "https://"
+	} else {
+		url = "http://"
+	}
 	config.Domain = url + config.Domain
 
-	//config.Bookings.ClientID = os.Getenv("BOOKINGS_CLIENT_ID")
 	config.Bookings.ClientID = GetEnvStringRequired("BOOKINGS_CLIENT_ID")
-	//config.Bookings.ClientSecret = os.Getenv("BOOKINGS_CLIENT_SECRET")
 	config.Bookings.ClientSecret = GetEnvStringRequired("BOOKINGS_CLIENT_SECRET")
-	//config.Bookings.TenantID = os.Getenv("BOOKINGS_TENANT_ID")
 	config.Bookings.TenantID = GetEnvStringRequired("BOOKINGS_TENANT_ID")
-	//config.Bookings.BusinessID = os.Getenv("BOOKINGS_BUSINESS_ID")
 	config.Bookings.BusinessID = GetEnvStringRequired("BOOKINGS_BUSINESS_ID")
-	//authUrl := os.Getenv("BOOKINGS_AUTH_URL")
 	authUrl := GetEnvStringOrDefault("BOOKINGS_AUTH_URL", "https://login.microsoftonline.com")
 
 	config.Bookings.AuthURL = authUrl + "/" + config.Bookings.TenantID
