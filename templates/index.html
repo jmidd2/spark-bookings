@@ -13,14 +13,16 @@
 <div class="container">
     <h1 class="title">Welcome to Phoenix Spark!</h1>
     {{if .ActiveBooking}}
-    <div class="active-booking current-booking">
-        <h3 class="active-booking-title">{{.ActiveBooking.Customer.Name}}</h3>
-        <p class="active-booking-date date">{{.ActiveBooking.Start.DateTime.Local.Format "Jan 2, 2006"}}</p>
-        <p class="active-booking-time time">{{.ActiveBooking.Start.DateTime.Local.Format "3:04 PM"}} - {{.ActiveBooking.End.DateTime.Local.Format "3:04 PM"}}</p>
-        <p class="active-booking-email details">{{.ActiveBooking.Customer.EmailAddress}}</p>
-        <p class="active-booking-phone details">{{.ActiveBooking.Customer.Phone}}</p>
-    </div>
-        {{else}}
+        <div class="active-booking current-booking">
+            <h3 class="active-booking-title">{{.ActiveBooking.Customer.Name}}</h3>
+            <p class="active-booking-date date">{{.ActiveBooking.Start.DateTime.Local.Format "Jan 2, 2006"}}</p>
+            <p class="active-booking-time time">
+                {{.ActiveBooking.Start.DateTime.Local.Format "3:04 PM"}} - {{.ActiveBooking.End.DateTime.Local.Format "3:04 PM"}}
+            </p>
+            <p class="active-booking-email details">{{.ActiveBooking.Customer.EmailAddress}}</p>
+            <p class="active-booking-phone details">{{.ActiveBooking.Customer.Phone}}</p>
+        </div>
+    {{else}}
         <div class="active-booking next-booking">
             <h3 class="active-booking-title">No active booking</h3>
             <p>Go to https://www.travisspark.com to book our conference room or find a member downstairs.</p>
@@ -34,7 +36,8 @@
                     <h3>{{.Customer.Name}}</h3>
                     <div class="date-time">
                         <p class="date">{{.Start.DateTime.Local.Format "Jan 2, 2006"}}</p>
-                        <p class="time">{{.Start.DateTime.Local.Format "3:04 PM"}} - {{.End.DateTime.Local.Format "3:04 PM"}}</p>
+                        <p class="time">{{.Start.DateTime.Local.Format "3:04 PM"}}
+                            - {{.End.DateTime.Local.Format "3:04 PM"}}</p>
                     </div>
                     <p class="details">{{.Customer.EmailAddress}}</p>
                     <p class="details">{{.Customer.Phone}}</p>
