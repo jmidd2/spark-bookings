@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -8,23 +9,58 @@ import (
 	"spark-bookings/utils"
 
 	"github.com/joho/godotenv"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Port     int
-	Domain   string
-	Secure   bool
-	Env      string
-	Bookings client.Config
+	Port     int           `yaml:"port"`
+	Domain   string        `yaml:"domain,omitempty"`
+	Secure   bool          `yaml:"https"`
+	Env      string        `yaml:"env"`
+	Bookings client.Config `yaml:"bookings"`
 }
 
 const DefaultEnv = "development"
 
+func loadYamlConfigFile(path string) (*Config, error) {
+	if path == "" {
+		return nil, errors.New("path is empty")
+	}
+
+	file, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			log.Println("Config file not found")
+			return nil, err
+		}
+		return nil, err
+	}
+
+	config := Config{}
+	err = yaml.Unmarshal(file, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	if config.Bookings.AuthURL == "" {
+		config.Bookings.AuthURL = "https://login.microsoftonline.com"
+	}
+
+	return &config, nil
+}
+
 func New() (*Config, error) {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("Error loading .env file")
 	}
+
+	configFile, err := loadYamlConfigFile("config.yaml")
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("Config: %+v\n", configFile)
 
 	env := GetEnvStringOrDefault("APP_ENV", DefaultEnv)
 	utils.PrintInfo(fmt.Sprintf("Running in %s mode", utils.Bold(env)))
@@ -70,11 +106,11 @@ func New() (*Config, error) {
 	}
 	config.Domain = url + config.Domain
 
-	config.Bookings.ClientID = GetEnvStringRequired("BOOKINGS_CLIENT_ID")
-	config.Bookings.ClientSecret = GetEnvStringRequired("BOOKINGS_CLIENT_SECRET")
-	config.Bookings.TenantID = GetEnvStringRequired("BOOKINGS_TENANT_ID")
-	config.Bookings.BusinessID = GetEnvStringRequired("BOOKINGS_BUSINESS_ID")
-	authUrl := GetEnvStringOrDefault("BOOKINGS_AUTH_URL", "https://login.microsoftonline.com")
+	config.Bookings.ClientID = GetEnvStringOrDefault("BOOKINGS_CLIENT_ID", configFile.Bookings.ClientID)
+	config.Bookings.ClientSecret = GetEnvStringOrDefault("BOOKINGS_CLIENT_SECRET", configFile.Bookings.ClientSecret)
+	config.Bookings.TenantID = GetEnvStringOrDefault("BOOKINGS_TENANT_ID", configFile.Bookings.TenantID)
+	config.Bookings.BusinessID = GetEnvStringOrDefault("BOOKINGS_BUSINESS_ID", configFile.Bookings.BusinessID)
+	authUrl := GetEnvStringOrDefault("BOOKINGS_AUTH_URL", configFile.Bookings.AuthURL)
 
 	config.Bookings.AuthURL = authUrl + "/" + config.Bookings.TenantID
 	config.Bookings.Scopes = []string{"https://graph.microsoft.com/.default"}

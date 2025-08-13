@@ -23,12 +23,12 @@ type AppClient struct {
 }
 
 type Config struct {
-	ClientID     string
-	ClientSecret string
-	TenantID     string
-	BusinessID   string
-	AuthURL      string
-	Scopes       []string
+	ClientID     string   `yaml:"client_id"`
+	ClientSecret string   `yaml:"client_secret"`
+	TenantID     string   `yaml:"tenant_id"`
+	BusinessID   string   `yaml:"business_id"`
+	AuthURL      string   `yaml:"auth_url,omitempty"`
+	Scopes       []string `yaml:"scopes,omitempty"`
 }
 
 type CalendarView struct {
