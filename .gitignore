@@ -154,6 +154,7 @@ go.work.sum
 .env
 *.env
 !.env.example
+config.yaml
 
 # build directories
 bin

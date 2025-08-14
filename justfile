@@ -62,7 +62,7 @@ clean:
 # Build the project
 build:
     @echo "Building project..."
-    go build -o bin/app .
+    go build -o bin/booking-display .
 
 # Run tests
 test:
